@@ -1,7 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { decode } from 'base64-arraybuffer'
 import * as ImagePicker from 'expo-image-picker'
+import { router } from 'expo-router'
 import { useState } from 'react'
 import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { supabase } from '../services/supabase'
 
 export default function Add() {
     const [location, setLocation] = useState('')
@@ -20,11 +23,47 @@ export default function Add() {
             allowsEditing: true,
             aspect: [4, 3],
             quality: 1,
+            base64: true,
         })
         if (!result.canceled) {
             setImage(result.assets[0].uri)
             setBase64Image(result.assets[0].base64 || null)
         }
+    }
+
+    const handleSubmit = async () => {
+        // validate form data location, distance, image
+        if (!location || !distance || !image) {
+            Alert.alert('คำเตือน', 'กรุณากรอกข้อมูล และรูปภาพสถานที่ให้ครบ')
+            return
+        }
+        // upload image to supabase storage
+        let imageUrl = ''
+        const fileName = `img_${Date.now()}.jpg`
+        const { error: uploadError } = await supabase.storage.from('run_bk').upload(fileName, decode(base64Image || ''), { contentType: 'image/jpeg' })
+        if (uploadError) throw uploadError
+
+        // get image url from supabase storage
+        imageUrl = supabase.storage.from('run_bk').getPublicUrl(fileName).data.publicUrl
+
+        // insert data to supabase database
+        const { error: insertError } = await supabase.from('runs').insert([
+            {
+                location: location,
+                distance: distance,
+                time_of_day: timeOfDay,
+                run_date: new Date().toISOString().split('T')[0],
+                image_url: imageUrl,
+            }
+        ])
+        if (insertError) {
+            Alert.alert('คำเตือน', 'บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
+            return
+        }
+
+        // show success message
+        Alert.alert('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย')
+        router.back()
     }
 
     return (
@@ -54,7 +93,7 @@ export default function Add() {
                             </View>
                         )}
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.submitButton}>
+                <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
                     <Text style={styles.submitButtonText}>บันทึกข้อมูล</Text>
                 </TouchableOpacity>
             </ScrollView>
