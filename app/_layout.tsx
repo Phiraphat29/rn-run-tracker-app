@@ -1,3 +1,4 @@
+import { HeaderMenu } from "@/components/HeaderMenu";
 import { NotoSansThai_400Regular, NotoSansThai_700Bold, useFonts } from "@expo-google-fonts/noto-sans-thai";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
@@ -33,9 +34,10 @@ export default function RootLayout() {
         headerBackButtonDisplayMode: "minimal"
       }}>
       <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="run" options={{ headerTitle: "Run Tracker" }} />
-      <Stack.Screen name="add" options={{ headerTitle: "เพิ่มรายการวิ่ง" }} />
-      <Stack.Screen name="[id]" options={{ headerTitle: "รายละเอียดการวิ่ง" }} />
+      <Stack.Screen name="login" options={{ headerShown: false }} />
+      <Stack.Screen name="run" options={{ headerTitle: "Run Tracker", headerRight: () => <HeaderMenu /> }} />
+      <Stack.Screen name="add" options={{ headerTitle: "เพิ่มรายการวิ่ง", headerRight: () => <HeaderMenu /> }} />
+      <Stack.Screen name="[id]" options={{ headerTitle: "รายละเอียดการวิ่ง", headerRight: () => <HeaderMenu /> }} />
     </Stack>
   );
 }

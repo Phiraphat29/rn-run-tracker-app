@@ -11,7 +11,14 @@ export default function Run() {
     const [runs, setRuns] = useState<RunsType[]>([])
 
     const fetchRuns = async () => {
-        const { data, error } = await supabase.from('runs').select('*')
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+
+        const { data, error } = await supabase
+            .from('runs')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('run_date', { ascending: false })
         if (error) {
             Alert.alert('คำเตือน', 'ไม่สามารถดึงข้อมูลการวิ่งได้')
             return

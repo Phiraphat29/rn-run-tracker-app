@@ -1,12 +1,17 @@
+import { supabase } from '@/services/supabase'
 import { router } from 'expo-router'
 import { useEffect } from 'react'
 import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native'
 
 export default function Index() {
   useEffect(() => {
-    setTimeout(() => {
-      router.replace('/run')
-    }, 3000)
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      setTimeout(() => {
+        router.replace(session ? '/run' : '/login')
+      }, 2000)
+    }
+    checkSession()
   }, [])
 
   return (

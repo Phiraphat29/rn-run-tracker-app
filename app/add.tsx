@@ -3,7 +3,7 @@ import { decode } from 'base64-arraybuffer'
 import * as ImagePicker from 'expo-image-picker'
 import { router } from 'expo-router'
 import { useState } from 'react'
-import { Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native'
 import { supabase } from '../services/supabase'
 
 export default function Add() {
@@ -12,6 +12,7 @@ export default function Add() {
     const [timeOfDay, setTimeOfDay] = useState('เช้า')
     const [image, setImage] = useState<string | null>(null)
     const [base64Image, setBase64Image] = useState<string | null>(null)
+    const [submitting, setSubmitting] = useState(false)
 
     const handleTakePhoto = async () => {
         const { status } = await ImagePicker.requestCameraPermissionsAsync()
@@ -32,38 +33,46 @@ export default function Add() {
     }
 
     const handleSubmit = async () => {
-        // validate form data location, distance, image
         if (!location || !distance || !image) {
             Alert.alert('คำเตือน', 'กรุณากรอกข้อมูล และรูปภาพสถานที่ให้ครบ')
             return
         }
-        // upload image to supabase storage
-        let imageUrl = ''
-        const fileName = `img_${Date.now()}.jpg`
-        const { error: uploadError } = await supabase.storage.from('run_bk').upload(fileName, decode(base64Image || ''), { contentType: 'image/jpeg' })
-        if (uploadError) throw uploadError
 
-        // get image url from supabase storage
-        imageUrl = supabase.storage.from('run_bk').getPublicUrl(fileName).data.publicUrl
-
-        // insert data to supabase database
-        const { error: insertError } = await supabase.from('runs').insert([
-            {
-                location: location,
-                distance: distance,
-                time_of_day: timeOfDay,
-                run_date: new Date().toISOString().split('T')[0],
-                image_url: imageUrl,
-            }
-        ])
-        if (insertError) {
-            Alert.alert('คำเตือน', 'บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+            Alert.alert('คำเตือน', 'กรุณาเข้าสู่ระบบก่อน')
             return
         }
 
-        // show success message
-        Alert.alert('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย')
-        router.back()
+        setSubmitting(true)
+        try {
+            let imageUrl = ''
+            const fileName = `img_${Date.now()}.jpg`
+            const { error: uploadError } = await supabase.storage.from('run_bk').upload(fileName, decode(base64Image || ''), { contentType: 'image/jpeg' })
+            if (uploadError) throw uploadError
+
+            imageUrl = supabase.storage.from('run_bk').getPublicUrl(fileName).data.publicUrl
+
+            const { error: insertError } = await supabase.from('runs').insert([
+                {
+                    user_id: user.id,
+                    location: location,
+                    distance: distance,
+                    time_of_day: timeOfDay,
+                    run_date: new Date().toISOString().split('T')[0],
+                    image_url: imageUrl,
+                }
+            ])
+            if (insertError) {
+                Alert.alert('คำเตือน', 'บันทึกข้อมูลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง')
+                return
+            }
+
+            Alert.alert('สำเร็จ', 'บันทึกข้อมูลเรียบร้อย')
+            router.back()
+        } finally {
+            setSubmitting(false)
+        }
     }
 
     return (
@@ -93,8 +102,8 @@ export default function Add() {
                             </View>
                         )}
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-                    <Text style={styles.submitButtonText}>บันทึกข้อมูล</Text>
+                <TouchableOpacity style={[styles.submitButton, submitting && styles.submitButtonDisabled]} onPress={handleSubmit} disabled={submitting}>
+                    {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>บันทึกข้อมูล</Text>}
                 </TouchableOpacity>
             </ScrollView>
         </KeyboardAvoidingView>
@@ -185,6 +194,9 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontFamily: 'NotoSansThai_700Bold',
         color: '#ffffff',
+    },
+    submitButtonDisabled: {
+        opacity: 0.7,
     },
     image: {
         width: '100%',

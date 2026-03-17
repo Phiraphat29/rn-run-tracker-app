@@ -1,5 +1,7 @@
 import { supabase } from '@/services/supabase'
 import Ionicons from '@expo/vector-icons/Ionicons'
+import { decode } from 'base64-arraybuffer'
+import * as ImagePicker from 'expo-image-picker'
 import { router, useLocalSearchParams } from 'expo-router'
 import { useEffect, useState } from 'react'
 
@@ -15,11 +17,19 @@ export default function RunDetail() {
     const [distance, setDistance] = useState('')
     const [timeOfDay, setTimeOfDay] = useState('เช้า')
     const [image, setImage] = useState('')
+    const [newBase64, setNewBase64] = useState<string | null>(null)
     const [updating, setUpdating] = useState(false)
 
-    // fetch data
     const fetchData = async () => {
-        const { data, error } = await supabase.from('runs').select('*').eq('id', id).single()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+
+        const { data, error } = await supabase
+            .from('runs')
+            .select('*')
+            .eq('id', id)
+            .eq('user_id', user.id)
+            .single()
 
         if (error) throw error
 
@@ -33,34 +43,80 @@ export default function RunDetail() {
         fetchData()
     }, [])
 
+    const handlePickImage = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+        if (status !== 'granted') {
+            Alert.alert('คำเตือน', 'คุณไม่ได้อนุญาตให้เข้าถึงคลังรูปภาพ')
+            return
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 1,
+            base64: true,
+        })
+        if (!result.canceled) {
+            setImage(result.assets[0].uri)
+            setNewBase64(result.assets[0].base64 || null)
+        }
+    }
+
     const handleUpdate = async () => {
-        // confirm dialog
         Alert.alert('แก้ไขรายการวิ่ง', 'คุณต้องการบันทึกการแก้ไขหรือไม่', [
             { text: 'ยกเลิก', style: 'cancel' },
             {
                 text: 'บันทึก', onPress: async () => {
-                    // validation
                     if (!location || !distance) {
                         Alert.alert('คำเตือน', 'กรุณากรอกข้อมูลให้ครบ')
                         return
                     }
-                    const { error: updateError } = await supabase.from('runs').update({ location: location, distance: distance, time_of_day: timeOfDay }).eq('id', id)
-                    if (updateError) throw updateError
+                    const { data: { user } } = await supabase.auth.getUser()
+                    if (!user) return
 
-                    Alert.alert('สำเร็จ', 'บันทึกการแก้ไขเรียบร้อย')
-                    router.back()
+                    setUpdating(true)
+                    try {
+                        const updatePayload: Record<string, string> = { location, distance, time_of_day: timeOfDay }
+
+                        if (newBase64) {
+                            const fileName = `img_${Date.now()}.jpg`
+                            const { error: uploadError } = await supabase.storage
+                                .from('run_bk')
+                                .upload(fileName, decode(newBase64), { contentType: 'image/jpeg' })
+                            if (uploadError) throw uploadError
+
+                            updatePayload.image_url = supabase.storage.from('run_bk').getPublicUrl(fileName).data.publicUrl
+                        }
+
+                        const { error: updateError } = await supabase
+                            .from('runs')
+                            .update(updatePayload)
+                            .eq('id', id)
+                            .eq('user_id', user.id)
+                        if (updateError) throw updateError
+
+                        Alert.alert('สำเร็จ', 'บันทึกการแก้ไขเรียบร้อย')
+                        router.back()
+                    } finally {
+                        setUpdating(false)
+                    }
                 }
             },
         ])
     }
 
     const handleDelete = () => {
-        // confirm dialog
         Alert.alert('คำเตือน', 'คุณต้องการลบรายการนี้หรือไม่', [
             { text: 'ยกเลิก', style: 'cancel' },
             {
                 text: 'ลบ', onPress: async () => {
-                    const { error: deleteError } = await supabase.from('runs').delete().eq('id', id)
+                    const { data: { user } } = await supabase.auth.getUser()
+                    if (!user) return
+
+                    const { error: deleteError } = await supabase
+                        .from('runs')
+                        .delete()
+                        .eq('id', id)
+                        .eq('user_id', user.id)
                     if (deleteError) throw deleteError
 
                     const { error: storageError } = await supabase.storage.from('run_bk').remove([image.split('/').pop() || ''])
@@ -85,6 +141,9 @@ export default function RunDetail() {
                         <Text style={styles.noImageText}>ไม่มีรูปภาพประกอบ</Text>
                     </View>
                 )}
+                <TouchableOpacity style={styles.editImageButton} onPress={handlePickImage} activeOpacity={0.8}>
+                    <Ionicons name="camera-outline" size={20} color="#fff" />
+                </TouchableOpacity>
             </View>
 
             {/* ฟอร์มแก้ไขข้อมูล */}
@@ -169,6 +228,22 @@ const styles = StyleSheet.create({
         width: '100%',
         height: 200,
         backgroundColor: '#EEE',
+    },
+    editImageButton: {
+        position: 'absolute',
+        bottom: 42,
+        right: 14,
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#2C5DFF',
+        justifyContent: 'center',
+        alignItems: 'center',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+        elevation: 5,
     },
     mainImage: {
         width: '100%',
